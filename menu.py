@@ -1,5 +1,7 @@
 import tkinter as tk
+from tkinter import messagebox
 from game import GameScene
+import traceback
 
 WIDTH = 1800
 HEIGHT = 1000
@@ -64,19 +66,25 @@ class MainMenu:
         self.canvas.create_window(x, y, window=button)
 
     def start_game(self):
-        self.clear()
-        GameScene(self.root, self.canvas)
+        try:
+            self.clear()
+            GameScene(self.root, self.canvas)
+        except Exception as e:
+            # В .exe исключения в callback часто "теряются" (кажется, что кнопка не работает).
+            messagebox.showerror(
+                "Ошибка запуска игры",
+                f"Не удалось открыть игровой экран.\n\n{e}"
+            )
+            traceback.print_exc()
+            self.clear()
+            self.draw_ui()
 
     def show_about(self):
-        from tkinter import messagebox
-
         text = (
             "Игра \"Стреляющие башни\".\n"
             "Написана на Python с использованием библиотеки Tkinter.\n\n"
-            "В игре вы управляете башней и юнитами, сражаясь\n"
-            "против вражеской башни и её войск."
+            "Защищайте свою башню, выпускайте юнитов и уничтожьте башню врага."
         )
-
         messagebox.showinfo("Об игре", text)
 
     def exit_game(self):
