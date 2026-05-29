@@ -4,7 +4,7 @@ WIDTH = 1800
 # высота канваса — как в game.py (от неё зависит AABB башен)
 HEIGHT = 1000
 
-_TOWER_BODY_HALF_W = 100
+_TOWER_BODY_HALF_W = 200
 _PLAYER_TOWER_X = 140
 _ENEMY_TOWER_X = WIDTH - 140
 
@@ -51,6 +51,7 @@ class Unit:
         kind="melee",
         sprite_idle=None,
         sprite_attack=None,
+        sprite_windup=None,
     ):
 
         self.canvas = canvas
@@ -77,12 +78,17 @@ class Unit:
 
         self.sprite_idle = sprite_idle
         self.sprite_attack = sprite_attack
+        self.sprite_windup = sprite_windup
         self.uses_sprite = bool(sprite_idle and sprite_attack)
         self.attack_anim_until = 0.0
+        self.attack_windup_until = 0.0
 
         if self.uses_sprite:
             w = max(sprite_idle.width(), sprite_attack.width())
             h = max(sprite_idle.height(), sprite_attack.height())
+            if sprite_windup is not None:
+                w = max(w, sprite_windup.width())
+                h = max(h, sprite_windup.height())
             self._hit_half_w = w / 2.0
             self._sprite_h = float(h)
             self.id = self.canvas.create_image(
@@ -106,12 +112,25 @@ class Unit:
 
     def note_attack(self):
         if self.uses_sprite:
-            self.attack_anim_until = time.time() + 0.25
+            now = time.time()
+            if self.sprite_windup is not None:
+                self.attack_windup_until = now + 0.14
+                self.attack_anim_until = now + 0.34
+            else:
+                self.attack_windup_until = 0.0
+                self.attack_anim_until = now + 0.25
 
     def _refresh_sprite_frame(self):
         if not self.uses_sprite:
             return
-        img = self.sprite_attack if time.time() < self.attack_anim_until else self.sprite_idle
+        now = time.time()
+        if now < self.attack_anim_until:
+            if self.sprite_windup is not None and now < self.attack_windup_until:
+                img = self.sprite_windup
+            else:
+                img = self.sprite_attack
+        else:
+            img = self.sprite_idle
         self.canvas.itemconfig(self.id, image=img)
 
     def update(self):

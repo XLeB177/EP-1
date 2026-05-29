@@ -2,6 +2,7 @@ import os
 import sys
 import tkinter as tk
 from tkinter import messagebox
+import resources
 from ai import EnemyBotController
 from units import (
     Unit,
@@ -53,6 +54,11 @@ class GameScene:
         self.qte_speed = 0.034
         self.qte_elements = []
 
+        self.font_money = resources.get_font(self.root, 18, "bold")
+        self.font_ui = resources.get_font(self.root, 14)
+        self.font_end_title = resources.get_font(self.root, 48, "bold")
+        self.font_end_btn = resources.get_font(self.root, 18)
+
         self.load_sprites()
         self.create_scene()
         self.game_loop()
@@ -98,11 +104,11 @@ class GameScene:
 
     def load_sprites(self):
 
-        assets_dir = self._resolve_assets_dir()
+        assets_dir = resources.resolve_assets_dir()
 
         self.bg = tk.PhotoImage(file=os.path.join(assets_dir, "background.png"))
-        self.tower_player = tk.PhotoImage(file=os.path.join(assets_dir, "tower_player.png"))
-        self.tower_enemy = tk.PhotoImage(file=os.path.join(assets_dir, "tower_enemy.png"))
+        self.tower_player = self._load_tower_sprite(assets_dir, "tower_player.png")
+        self.tower_enemy = self._load_tower_sprite(assets_dir, "tower_enemy.png")
         self.tower_player_shoot = self._load_tower_shoot_variant(
             assets_dir, "tower_player_shoot.png", self.tower_player
         )
@@ -110,47 +116,64 @@ class GameScene:
             assets_dir, "tower_enemy_shoot.png", self.tower_enemy
         )
 
-        self.unit1_idle, self.unit1_attack = self._load_unit1_sprites(
+        # Союзные спрайты — как в PNG, без масштабирования в коде.
+        self.unit1_idle, self.unit1_attack = self._load_sprite_pair(
             assets_dir, "unit_1_1.png", "unit_1_2.png"
         )
-        self.enemy_unit1_idle, self.enemy_unit1_attack = self._load_unit1_sprites(
+        self.unit2_idle, self.unit2_windup, self.unit2_attack = self._load_sprite_triple(
+            assets_dir, "unit_2_1.png", "unit_2_2.png", "unit_2_3.png"
+        )
+        self.unit3_idle, self.unit3_attack = self._load_sprite_pair(
+            assets_dir, "unit_3_1.png", "unit_3_2.png"
+        )
+
+        self.enemy_unit1_idle, self.enemy_unit1_attack = self._load_sprite_pair(
             assets_dir, "enemy_unit_1_1.png", "enemy_unit_1_2.png"
         )
-
-    def _resolve_assets_dir(self):
-        candidates = []
-
-        if getattr(sys, "frozen", False):
-            meipass = getattr(sys, "_MEIPASS", None)
-            if meipass:
-                candidates.append(meipass)
-            candidates.append(os.path.dirname(sys.executable))
-
-        candidates.append(os.path.dirname(os.path.abspath(__file__)))
-
-        for base_dir in candidates:
-            assets_dir = os.path.join(base_dir, "assets")
-            if os.path.isfile(os.path.join(assets_dir, "background.png")):
-                return assets_dir
-
-        tried = "\n".join(f"- {os.path.join(base, 'assets')}" for base in candidates)
-        raise FileNotFoundError(
-            "Не найдена папка assets (и/или background.png).\n"
-            "Проверьте, что при сборке PyInstaller вы добавляете assets в сборку.\n\n"
-            f"Пробовал пути:\n{tried}"
+        self.enemy_unit2_idle, self.enemy_unit2_windup, self.enemy_unit2_attack = (
+            self._load_sprite_triple(
+                assets_dir,
+                "enemy_unit_2_1.png",
+                "enemy_unit_2_2.png",
+                "enemy_unit_2_3.png",
+            )
         )
+        self.enemy_unit3_idle, self.enemy_unit3_attack = self._load_sprite_pair(
+            assets_dir, "enemy_unit_3_1.png", "enemy_unit_3_2.png"
+        )
+
+        self.money_bg = resources.load_photo(assets_dir, "money.png")
+        self._money_panel_x = 24
+        self._money_panel_y = 16
+
+    _TOWER_ZOOM = 2
+
+    def _load_tower_sprite(self, assets_dir, filename):
+        path = os.path.join(assets_dir, filename)
+        return self._zoom_sprite(tk.PhotoImage(file=path), self._TOWER_ZOOM)
 
     def _load_tower_shoot_variant(self, assets_dir, filename, fallback):
         path = os.path.join(assets_dir, filename)
         if not os.path.isfile(path):
             return fallback
         try:
-            return tk.PhotoImage(file=path)
+            return self._load_tower_sprite(assets_dir, filename)
         except tk.TclError:
             return fallback
 
-    def _load_unit1_sprites(self, assets_dir, idle_name, attack_name):
-        """Доходяга: *_1 — спокойствие/ходьба, *_2 — удар."""
+    def _zoom_sprite(self, photo, factor):
+        """Увеличение PhotoImage (только 2x или 4x для пиксель-арта)."""
+        if not factor or factor <= 1:
+            return photo
+        if int(factor) not in (2, 4):
+            factor = 2
+        try:
+            return photo.zoom(int(factor), int(factor))
+        except Exception:
+            return photo
+
+    def _load_sprite_pair(self, assets_dir, idle_name, attack_name, max_height=None):
+        """Пара кадров: *_1 — спокойствие/ходьба, *_2 — удар/атака."""
 
         def load_one(filename):
             path = os.path.join(assets_dir, filename)
@@ -158,7 +181,9 @@ class GameScene:
                 return None
             try:
                 img = tk.PhotoImage(file=path)
-                return self._scale_sprite_if_tall(img, max_height=88)
+                if max_height is not None:
+                    return self._scale_sprite_if_tall(img, max_height=max_height)
+                return img
             except tk.TclError:
                 return None
 
@@ -171,6 +196,36 @@ class GameScene:
             idle = attack
 
         return idle, attack
+
+    def _load_sprite_triple(self, assets_dir, idle_name, windup_name, attack_name, max_height=None):
+        """Три кадра: *_1 — покой, *_2 — подготовка, *_3 — удар."""
+
+        def load_one(filename):
+            path = os.path.join(assets_dir, filename)
+            if not os.path.isfile(path):
+                return None
+            try:
+                img = tk.PhotoImage(file=path)
+                if max_height is not None:
+                    return self._scale_sprite_if_tall(img, max_height=max_height)
+                return img
+            except tk.TclError:
+                return None
+
+        idle = load_one(idle_name)
+        windup = load_one(windup_name)
+        attack = load_one(attack_name)
+
+        if idle and not windup:
+            windup = attack or idle
+        if idle and not attack:
+            attack = windup or idle
+        if attack and not idle:
+            idle = attack
+        if windup and not idle:
+            idle = windup
+
+        return idle, windup, attack
 
     def _scale_sprite_if_tall(self, photo, max_height=88):
         h = photo.height()
@@ -213,18 +268,32 @@ class GameScene:
             fill="green"
         )
 
+        if self.money_bg:
+            self.money_bg_id = self.canvas.create_image(
+                self._money_panel_x,
+                self._money_panel_y,
+                anchor="nw",
+                image=self.money_bg,
+            )
+            money_cx = self._money_panel_x + self.money_bg.width() // 2
+            money_cy = self._money_panel_y + self.money_bg.height() // 2
+        else:
+            self.money_bg_id = None
+            money_cx, money_cy = 80, 40
+
         self.money_text = self.canvas.create_text(
-            80, 40,
+            money_cx,
+            money_cy,
             text=f"Деньги: {self.money}",
-            font=("Arial", 22, "bold"),
+            font=self.font_money,
             fill="white",
-            anchor="w"
+            anchor="center",
         )
 
         self.upgrade_btn = tk.Button(
             self.root,
             text="Прокачка дохода (30)",
-            font=("Arial", 14),
+            font=self.font_ui,
             command=self.upgrade_income
         )
 
@@ -233,7 +302,7 @@ class GameScene:
         self.shoot_btn = tk.Button(
             self.root,
             text="Выстрел (20)",
-            font=("Arial", 14),
+            font=self.font_ui,
             command=self.start_qte
         )
 
@@ -242,7 +311,7 @@ class GameScene:
         self.pause_btn = tk.Button(
             self.root,
             text="Пауза",
-            font=("Arial", 14),
+            font=self.font_ui,
             command=self.toggle_pause
         )
 
@@ -255,18 +324,21 @@ class GameScene:
         self.unit1_btn = tk.Button(
             self.root,
             text="Доходяга (30)",
+            font=self.font_ui,
             command=lambda: self.spawn_unit(30, 120, 6, 1.8, 1, "blue", "melee")
         )
 
         self.unit2_btn = tk.Button(
             self.root,
             text="Лучник (70)",
+            font=self.font_ui,
             command=lambda: self.spawn_unit(70, 90, 16, 1.4, 1.2, "purple", "archer")
         )
 
         self.unit3_btn = tk.Button(
             self.root,
-            text="Меражирнич (120)",
+            text="Мегажирнич (120)",
+            font=self.font_ui,
             command=lambda: self.spawn_unit(120, 420, 28, 0.8, 2, "orange", "splash")
         )
 
@@ -296,12 +368,21 @@ class GameScene:
             if enemy_center < spawn_x:
                 spawn_x = max(180, enemy_center - 60)
 
-        sprites = self._unit1_sprite_pair(for_enemy=False) if kind == "melee" else (None, None)
+        if kind == "melee":
+            sprites = self._unit1_sprite_pair(for_enemy=False)
+        elif kind == "archer":
+            sprites = self._unit2_sprites(for_enemy=False)
+        elif kind == "splash":
+            sprites = self._unit3_sprite_pair(for_enemy=False)
+        else:
+            sprites = (None, None, None)
+
+        spawn_y = 720
 
         unit = Unit(
             self.canvas,
             spawn_x,
-            720,
+            spawn_y,
             hp,
             damage,
             speed,
@@ -310,9 +391,11 @@ class GameScene:
             False,
             kind,
             sprite_idle=sprites[0],
-            sprite_attack=sprites[1],
+            sprite_attack=sprites[2] if len(sprites) > 2 else sprites[1],
+            sprite_windup=sprites[1] if len(sprites) > 2 and sprites[1] is not None else None,
         )
         self.units.append(unit)
+
     def _unit1_sprite_pair(self, for_enemy=False):
         if for_enemy:
             idle = getattr(self, "enemy_unit1_idle", None)
@@ -323,6 +406,30 @@ class GameScene:
         if idle and attack:
             return idle, attack
         return None, None
+
+    def _unit2_sprites(self, for_enemy=False):
+        if for_enemy:
+            idle = getattr(self, "enemy_unit2_idle", None)
+            windup = getattr(self, "enemy_unit2_windup", None)
+            attack = getattr(self, "enemy_unit2_attack", None)
+        else:
+            idle = getattr(self, "unit2_idle", None)
+            windup = getattr(self, "unit2_windup", None)
+            attack = getattr(self, "unit2_attack", None)
+        if idle and attack:
+            return idle, windup, attack
+        return None, None, None
+
+    def _unit3_sprite_pair(self, for_enemy=False):
+        if for_enemy:
+            idle = getattr(self, "enemy_unit3_idle", None)
+            attack = getattr(self, "enemy_unit3_attack", None)
+        else:
+            idle = getattr(self, "unit3_idle", None)
+            attack = getattr(self, "unit3_attack", None)
+        if idle and attack:
+            return idle, None, attack
+        return None, None, None
 
     def _flash_player_tower_shoot(self, duration_ms=250):
         if self.tower_player_shoot is self.tower_player:
@@ -406,6 +513,7 @@ class GameScene:
 
         if choice == 2 and self.enemy_money >= 70:
             self.enemy_money -= 70
+            sp = self._unit2_sprites(for_enemy=True)
             self.units.append(
                 Unit(
                     self.canvas,
@@ -418,12 +526,16 @@ class GameScene:
                     "darkred",
                     True,
                     "archer",
+                    sprite_idle=sp[0],
+                    sprite_windup=sp[1],
+                    sprite_attack=sp[2],
                 )
             )
             return True
 
         if choice == 3 and self.enemy_money >= 120:
             self.enemy_money -= 120
+            sp = self._unit3_sprite_pair(for_enemy=True)
             self.units.append(
                 Unit(
                     self.canvas,
@@ -436,6 +548,8 @@ class GameScene:
                     "black",
                     True,
                     "splash",
+                    sprite_idle=sp[0],
+                    sprite_attack=sp[2],
                 )
             )
             return True
@@ -705,13 +819,19 @@ class GameScene:
 
         frame = tk.Frame(self.root)
 
-        btn1 = tk.Button(frame, text="Продолжить", width=20, command=self.resume_game)
+        btn1 = tk.Button(
+            frame, text="Продолжить", width=20, font=self.font_ui, command=self.resume_game
+        )
         btn1.pack(pady=10)
 
-        btn2 = tk.Button(frame, text="Об игре", width=20, command=self.show_about)
+        btn2 = tk.Button(
+            frame, text="Об игре", width=20, font=self.font_ui, command=self.show_about
+        )
         btn2.pack(pady=10)
 
-        btn3 = tk.Button(frame, text="Выйти в меню", width=20, command=self.confirm_exit)
+        btn3 = tk.Button(
+            frame, text="Выйти в меню", width=20, font=self.font_ui, command=self.confirm_exit
+        )
         btn3.pack(pady=10)
 
         self.pause_window = self.canvas.create_window(
@@ -752,7 +872,7 @@ class GameScene:
             "ЮНИТЫ (стоимость в скобках)\n"
             "• Доходяга (30) — недорогой боец ближнего боя.\n"
             "• Лучник (70) — атакует с дистанции, пока зона досягаемости пересекается с врагом.\n"
-            "• Меражирнич (120) — тяжёлый боец; удары бьют по площади вокруг цели.\n"
+            "• Мегажирнич (120) — тяжёлый боец; удары бьют по площади вокруг цели.\n"
             "Атака срабатывает, когда прямоугольник дальности атаки пересекается с телом цели "
             "(и с хитбоксом башни — дистанция та же, что и к юнитам).\n\n"
             "ВАША БАШНЯ — ВЫСТРЕЛ (20 золота)\n"
@@ -940,21 +1060,21 @@ class GameScene:
             WIDTH // 2,
             HEIGHT // 2 - 50,
             text=text,
-            font=("Arial", 48, "bold"),
+            font=self.font_end_title,
             fill="white"
         )
 
         self._play_again_btn = tk.Button(
             self.root,
             text="Играть снова",
-            font=("Arial", 18),
+            font=self.font_end_btn,
             command=self.play_again,
         )
 
         self._return_to_menu_btn = tk.Button(
             self.root,
             text="Выйти в меню",
-            font=("Arial", 18),
+            font=self.font_end_btn,
             command=self.return_to_menu,
         )
 

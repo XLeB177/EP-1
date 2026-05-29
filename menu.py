@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 from game import GameScene
+import resources
 import traceback
 
 WIDTH = 1800
@@ -13,67 +14,79 @@ class MainMenu:
         self.root.title("Стреляющие башни")
         self.root.resizable(False, False)
 
-        self.canvas = tk.Canvas(self.root, width=WIDTH, height=HEIGHT, bg="#1e1e2e")
+        self.canvas = tk.Canvas(self.root, width=WIDTH, height=HEIGHT, highlightthickness=0)
         self.canvas.pack()
 
-        # Координаты для центрирования
         self.center_x = WIDTH // 2
         self.center_y = HEIGHT // 2
 
+        self._load_ui_assets()
         self.draw_ui()
         self.root.mainloop()
+
+    def _load_ui_assets(self):
+        assets_dir = resources.resolve_assets_dir()
+
+        self.menu_bg = resources.load_photo(assets_dir, "background.png")
+        self.btn_play_img = resources.load_photo(assets_dir, "button_play.png")
+        self.btn_about_img = resources.load_photo(assets_dir, "button_about.png")
+        self.btn_exit_img = resources.load_photo(assets_dir, "button_exit.png")
+
+        self.font_title = resources.get_font(self.root, 56, "bold")
 
     def clear(self):
         self.canvas.delete("all")
 
     def draw_ui(self):
+        if self.menu_bg:
+            self.canvas.create_image(0, 0, anchor="nw", image=self.menu_bg)
+        else:
+            self.canvas.configure(bg="#1e1e2e")
+
         self.draw_title()
         self.draw_buttons()
 
     def draw_title(self):
-        # Заголовок над центром
         self.canvas.create_text(
             self.center_x,
             self.center_y - 200,
             text="СТРЕЛЯЮЩИЕ БАШНИ",
-            font=("Arial", 56, "bold"),
-            fill="white"
+            font=self.font_title,
+            fill="black",
         )
 
     def draw_buttons(self):
         button_start_y = self.center_y - 50
+        gap = 90
 
-        self.create_button("Играть", self.center_x, button_start_y, self.start_game)
-        self.create_button("Об игре", self.center_x, button_start_y + 90, self.show_about)
-        self.create_button("Выход", self.center_x, button_start_y + 180, self.exit_game)
-
-    def create_button(self, text, x, y, command):
-        button = tk.Button(
-            self.root,
-            text=text,
-            font=("Arial", 22),
-            width=25,
-            height=1,
-            bg="#4a4a6a",
-            fg="white",
-            activebackground="#6a6a8a",
-            activeforeground="white",
-            relief="raised",
-            borderwidth=3,
-            cursor="hand2",
-            command=command
+        self._sprite_button(self.btn_play_img, self.center_x, button_start_y, self.start_game)
+        self._sprite_button(
+            self.btn_about_img, self.center_x, button_start_y + gap, self.show_about
         )
-        self.canvas.create_window(x, y, window=button)
+        self._sprite_button(
+            self.btn_exit_img, self.center_x, button_start_y + gap * 2, self.exit_game
+        )
+
+    def _sprite_button(self, image, x, y, command):
+        if not image:
+            return
+        item = self.canvas.create_image(x, y, anchor="center", image=image, tags=("menu_btn",))
+
+        def on_click(_event):
+            command()
+
+        self.canvas.tag_bind(item, "<Button-1>", on_click)
+        self.canvas.tag_bind(item, "<Enter>", lambda _e: self.canvas.config(cursor="hand2"))
+        self.canvas.tag_bind(item, "<Leave>", lambda _e: self.canvas.config(cursor=""))
 
     def start_game(self):
         try:
             self.clear()
             GameScene(self.root, self.canvas)
         except Exception as e:
-            # В .exe исключения в callback часто "теряются" (кажется, что кнопка не работает).
             messagebox.showerror(
                 "Ошибка запуска игры",
-                f"Не удалось открыть игровой экран.\n\n{e}"
+                f"Не удалось открыть игровой экран.\n\n{e}",
             )
             traceback.print_exc()
             self.clear()
