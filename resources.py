@@ -1,4 +1,3 @@
-"""Пути к assets/fonts и загрузка игрового шрифта."""
 import os
 import struct
 import sys

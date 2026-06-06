@@ -19,6 +19,12 @@ FPS = 60
 QTE_CRIT_HALF = 16
 QTE_YELLOW_HALF = 80
 
+HP_BAR_Y1 = 80
+HP_BAR_Y2 = 110
+HP_BAR_WIDTH = 300
+PLAYER_HP_BAR_X1 = 40
+ENEMY_HP_BAR_X1 = WIDTH - 340
+
 
 class GameScene:
 
@@ -70,6 +76,28 @@ class GameScene:
         except Exception:
             pass
 
+    def _iter_game_buttons(self):
+        for name in (
+            "upgrade_btn",
+            "shoot_btn",
+            "pause_btn",
+            "unit1_btn",
+            "unit2_btn",
+            "unit3_btn",
+        ):
+            btn = getattr(self, name, None)
+            if btn is not None:
+                yield btn
+
+    def _set_game_controls_state(self, enabled):
+        state = tk.NORMAL if enabled else tk.DISABLED
+        for btn in self._iter_game_buttons():
+            try:
+                if btn.winfo_exists():
+                    btn.config(state=state)
+            except tk.TclError:
+                pass
+
     def _reset_session_state(self):
         self.paused = False
         self.game_over = False
@@ -92,7 +120,6 @@ class GameScene:
         self.enemy_hp = 1000
         self.max_hp = 1000
 
-        # сбрасываем QTE (на случай если конец игры наступил во время него)
         self.qte_active = False
         self.qte_value = 0
         self.qte_direction = 1
@@ -116,7 +143,6 @@ class GameScene:
             assets_dir, "tower_enemy_shoot.png", self.tower_enemy
         )
 
-        # Союзные спрайты — как в PNG, без масштабирования в коде.
         self.unit1_idle, self.unit1_attack = self._load_sprite_pair(
             assets_dir, "unit_1_1.png", "unit_1_2.png"
         )
@@ -162,7 +188,6 @@ class GameScene:
             return fallback
 
     def _zoom_sprite(self, photo, factor):
-        """Увеличение PhotoImage (только 2x или 4x для пиксель-арта)."""
         if not factor or factor <= 1:
             return photo
         if int(factor) not in (2, 4):
@@ -173,8 +198,6 @@ class GameScene:
             return photo
 
     def _load_sprite_pair(self, assets_dir, idle_name, attack_name, max_height=None):
-        """Пара кадров: *_1 — спокойствие/ходьба, *_2 — удар/атака."""
-
         def load_one(filename):
             path = os.path.join(assets_dir, filename)
             if not os.path.isfile(path):
@@ -198,8 +221,6 @@ class GameScene:
         return idle, attack
 
     def _load_sprite_triple(self, assets_dir, idle_name, windup_name, attack_name, max_height=None):
-        """Три кадра: *_1 — покой, *_2 — подготовка, *_3 — удар."""
-
         def load_one(filename):
             path = os.path.join(assets_dir, filename)
             if not os.path.isfile(path):
@@ -239,7 +260,6 @@ class GameScene:
 
     def create_scene(self):
 
-        # чтобы при перезапуске не копились старые кнопки
         for attr in (
             "upgrade_btn",
             "shoot_btn",
@@ -260,12 +280,40 @@ class GameScene:
             WIDTH - 140, 720, anchor="s", image=self.tower_enemy
         )
 
-        self.player_hp_bar = self.canvas.create_rectangle(40, 80, 340, 110, fill="green")
+        self.player_hp_bar_bg = self.canvas.create_rectangle(
+            PLAYER_HP_BAR_X1,
+            HP_BAR_Y1,
+            PLAYER_HP_BAR_X1 + HP_BAR_WIDTH,
+            HP_BAR_Y2,
+            fill="#3a2020",
+            outline="#5c3030",
+            width=2,
+        )
+        self.player_hp_bar = self.canvas.create_rectangle(
+            PLAYER_HP_BAR_X1,
+            HP_BAR_Y1,
+            PLAYER_HP_BAR_X1 + HP_BAR_WIDTH,
+            HP_BAR_Y2,
+            fill="#2ecc40",
+            outline="",
+        )
 
+        self.enemy_hp_bar_bg = self.canvas.create_rectangle(
+            ENEMY_HP_BAR_X1,
+            HP_BAR_Y1,
+            ENEMY_HP_BAR_X1 + HP_BAR_WIDTH,
+            HP_BAR_Y2,
+            fill="#3a2020",
+            outline="#5c3030",
+            width=2,
+        )
         self.enemy_hp_bar = self.canvas.create_rectangle(
-            WIDTH - 340, 80,
-            WIDTH - 40, 110,
-            fill="green"
+            ENEMY_HP_BAR_X1,
+            HP_BAR_Y1,
+            ENEMY_HP_BAR_X1 + HP_BAR_WIDTH,
+            HP_BAR_Y2,
+            fill="#2ecc40",
+            outline="",
         )
 
         if self.money_bg:
@@ -337,7 +385,7 @@ class GameScene:
 
         self.unit3_btn = tk.Button(
             self.root,
-            text="Мегажирнич (120)",
+            text="Паладин (120)",
             font=self.font_ui,
             command=lambda: self.spawn_unit(120, 420, 28, 0.8, 2, "orange", "splash")
         )
@@ -462,7 +510,6 @@ class GameScene:
         self.root.after(duration_ms, restore)
 
     def _enemy_tower_resolve_shot(self, damage):
-        """Выстрел вражеской башни по игроку: анимация и урон (0 — промах)."""
         self._flash_enemy_tower_shoot()
         if damage <= 0:
             return
@@ -487,7 +534,6 @@ class GameScene:
         return spawn_x
 
     def spawn_enemy_by_type(self, choice):
-        """Спавн юнита бота по типу 1..3; False если не хватает денег."""
         spawn_x = self._enemy_spawn_x()
 
         if choice == 1 and self.enemy_money >= 30:
@@ -566,9 +612,6 @@ class GameScene:
                 unit.in_combat = False
 
         def _separate_overlapping_bodies(a, b, body_a, body_b):
-            """
-
-            """
             ax1, ay1, ax2, ay2 = body_a
             bx1, by1, bx2, by2 = body_b
 
@@ -698,24 +741,17 @@ class GameScene:
                         self.check_game_over()
 
     def _deal_damage_with_splash(self, attacker, main_target):
-        """Наносит урон основному цели и, при необходимости, по области."""
-
-        # основной урон по выбранной цели
         main_target.hp -= attacker.damage
 
-        # только мегажирнич / аналогичный юнит бьёт по площади
         if getattr(attacker, "kind", "melee") != "splash":
             return
 
-        # радиус сплэша вокруг основной цели
         splash_radius = 80
 
         x1_t, y1_t, x2_t, y2_t = main_target.get_coords()
         center_target = (x1_t + x2_t) / 2
 
         for other in self.units:
-
-            # тот же отряд, что и основная цель, и не она сама
             if other is main_target:
                 continue
 
@@ -791,7 +827,6 @@ class GameScene:
                 text=f"Деньги: {self.money}"
             )
 
-            # обновляем цену кнопки
             next_cost = 30 * self.money_level
 
             if self.money_level < max_level:
@@ -802,50 +837,66 @@ class GameScene:
                 self.upgrade_btn.config(text="Доход MAX")
 
     def toggle_pause(self):
-
-        if self.game_over:
+        if self.game_over or self.paused:
             return
 
         self.paused = True
+        self._cancel_qte()
+        self._set_game_controls_state(False)
         self.show_pause_menu()
 
     def show_pause_menu(self):
-
         self.pause_overlay = self.canvas.create_rectangle(
             0, 0, WIDTH, HEIGHT,
             fill="black",
             stipple="gray50"
         )
 
-        frame = tk.Frame(self.root)
+        self.pause_frame = tk.Frame(self.root)
 
         btn1 = tk.Button(
-            frame, text="Продолжить", width=20, font=self.font_ui, command=self.resume_game
+            self.pause_frame,
+            text="Продолжить",
+            width=20,
+            font=self.font_ui,
+            command=self.resume_game,
         )
         btn1.pack(pady=10)
 
         btn2 = tk.Button(
-            frame, text="Об игре", width=20, font=self.font_ui, command=self.show_about
+            self.pause_frame,
+            text="Об игре",
+            width=20,
+            font=self.font_ui,
+            command=self.show_about,
         )
         btn2.pack(pady=10)
 
         btn3 = tk.Button(
-            frame, text="Выйти в меню", width=20, font=self.font_ui, command=self.confirm_exit
+            self.pause_frame,
+            text="Выйти в меню",
+            width=20,
+            font=self.font_ui,
+            command=self.confirm_exit,
         )
         btn3.pack(pady=10)
 
         self.pause_window = self.canvas.create_window(
             WIDTH // 2,
             HEIGHT // 2,
-            window=frame
+            window=self.pause_frame,
         )
+        self.canvas.tag_raise(self.pause_overlay)
+        self.canvas.tag_raise(self.pause_window)
 
     def resume_game(self):
-
         self.paused = False
 
         self.canvas.delete(self.pause_overlay)
         self.canvas.delete(self.pause_window)
+        self._destroy_widget_if_exists(getattr(self, "pause_frame", None))
+        self.pause_frame = None
+        self._set_game_controls_state(True)
 
     def confirm_exit(self):
 
@@ -872,7 +923,7 @@ class GameScene:
             "ЮНИТЫ (стоимость в скобках)\n"
             "• Доходяга (30) — недорогой боец ближнего боя.\n"
             "• Лучник (70) — атакует с дистанции, пока зона досягаемости пересекается с врагом.\n"
-            "• Мегажирнич (120) — тяжёлый боец; удары бьют по площади вокруг цели.\n"
+            "• Паладин (120) — тяжёлый боец; удары бьют по площади вокруг цели.\n"
             "Атака срабатывает, когда прямоугольник дальности атаки пересекается с телом цели "
             "(и с хитбоксом башни — дистанция та же, что и к юнитам).\n\n"
             "ВАША БАШНЯ — ВЫСТРЕЛ (20 золота)\n"
@@ -895,21 +946,44 @@ class GameScene:
 
         self.canvas.coords(
             self.player_hp_bar,
-            40, 80,
-            40 + 300 * player_ratio, 110
+            PLAYER_HP_BAR_X1,
+            HP_BAR_Y1,
+            PLAYER_HP_BAR_X1 + HP_BAR_WIDTH * player_ratio,
+            HP_BAR_Y2,
         )
 
         self.canvas.coords(
             self.enemy_hp_bar,
-            WIDTH - 340, 80,
-            WIDTH - 340 + 300 * enemy_ratio, 110
+            ENEMY_HP_BAR_X1,
+            HP_BAR_Y1,
+            ENEMY_HP_BAR_X1 + HP_BAR_WIDTH * enemy_ratio,
+            HP_BAR_Y2,
         )
 
-    def start_qte(self):
+    def _cancel_qte(self):
+        if not self.qte_active:
+            return
 
+        for element in self.qte_elements:
+            try:
+                self.canvas.delete(element)
+            except tk.TclError:
+                pass
+
+        self.qte_elements.clear()
+        self.qte_active = False
+        self.qte_value = 0
+        self.qte_direction = 1
+
+        try:
+            self.root.unbind("<space>")
+        except tk.TclError:
+            pass
+
+    def start_qte(self):
         cost = 20
 
-        if self.money < cost or self.qte_active or self.game_over:
+        if self.money < cost or self.qte_active or self.game_over or self.paused:
             return
 
         self.money -= cost
@@ -981,6 +1055,8 @@ class GameScene:
         self.root.bind("<space>", self.resolve_qte)
 
     def update_qte(self):
+        if self.paused or self.game_over:
+            return
 
         self.qte_value += self.qte_speed * self.qte_direction
 
@@ -1003,8 +1079,7 @@ class GameScene:
         )
 
     def resolve_qte(self, event):
-
-        if not self.qte_active:
+        if not self.qte_active or self.paused or self.game_over:
             return
 
         x = (WIDTH // 2 - 200) + 400 * self.qte_value
@@ -1027,13 +1102,7 @@ class GameScene:
         self.update_hp_bars()
         self.check_game_over()
 
-        for element in self.qte_elements:
-            self.canvas.delete(element)
-
-        self.qte_elements.clear()
-        self.qte_active = False
-
-        self.root.unbind("<space>")
+        self._cancel_qte()
 
     def check_game_over(self):
 
@@ -1044,9 +1113,26 @@ class GameScene:
             self.end_game(False)
 
     def end_game(self, win):
+        if self.game_over:
+            return
 
         self.game_over = True
         self.paused = True
+        self._cancel_qte()
+        self._set_game_controls_state(False)
+
+        if getattr(self, "pause_overlay", None):
+            try:
+                self.canvas.delete(self.pause_overlay)
+            except tk.TclError:
+                pass
+        if getattr(self, "pause_window", None):
+            try:
+                self.canvas.delete(self.pause_window)
+            except tk.TclError:
+                pass
+        self._destroy_widget_if_exists(getattr(self, "pause_frame", None))
+        self.pause_frame = None
 
         self._end_overlay_id = self.canvas.create_rectangle(
             0, 0, WIDTH, HEIGHT,
@@ -1091,7 +1177,6 @@ class GameScene:
         )
 
     def play_again(self):
-        # удаляем элементы экрана победы/поражения
         for cid in (
             getattr(self, "_play_again_window_id", None),
             getattr(self, "_return_to_menu_window_id", None),
@@ -1109,6 +1194,7 @@ class GameScene:
 
         self._reset_session_state()
         self.create_scene()
+        self._set_game_controls_state(True)
 
     def return_to_menu(self):
 

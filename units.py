@@ -1,8 +1,7 @@
 import time
 
 WIDTH = 1800
-# высота канваса — как в game.py (от неё зависит AABB башен)
-HEIGHT = 1000
+HEIGHT = 1000  # синхронизировать с game.py
 
 _TOWER_BODY_HALF_W = 200
 _PLAYER_TOWER_X = 140
@@ -10,18 +9,15 @@ _ENEMY_TOWER_X = WIDTH - 140
 
 
 def player_tower_body_box():
-    """AABB башни игрока (цель для вражеских атак)."""
     x = _PLAYER_TOWER_X
     return (x - _TOWER_BODY_HALF_W, 0, x + _TOWER_BODY_HALF_W, HEIGHT)
 
 
 def enemy_tower_body_box():
-    """AABB башни противника (цель для атак игрока)."""
     x = _ENEMY_TOWER_X
     return (x - _TOWER_BODY_HALF_W, 0, x + _TOWER_BODY_HALF_W, HEIGHT)
 
 
-# горизонтальная дальность атаки от передней границы модели (пиксели)
 _ATTACK_REACH = {
     "melee": 28,
     "archer": 260,
@@ -94,8 +90,7 @@ class Unit:
             self.id = self.canvas.create_image(
                 self.x, self.y, anchor="s", image=self.sprite_idle
             )
-            # Врагов просто зеркалим по горизонтали на уровне Canvas-элемента,
-            # так сохраняется прозрачность (в отличие от PhotoImage.get/put).
+            # зеркало через canvas.scale сохраняет прозрачность спрайта
             if self.is_enemy:
                 try:
                     self.canvas.scale(self.id, self.x, self.y, -1, 1)
@@ -174,15 +169,10 @@ class Unit:
         return self.canvas.coords(self.id)
 
     def get_body_box(self):
-        """AABB модели (тело) для урона и коллизий."""
         x1, y1, x2, y2 = self.get_coords()
         return (x1, y1, x2, y2)
 
     def get_attack_box(self):
-        """
-        AABB зоны дальности атаки: от передней границы модели в сторону противника.
-        Игрок смотрит вправо — зона вправо; враг — влево.
-        """
         x1, y1, x2, y2 = self.get_body_box()
         r = self.attack_range
         if self.is_enemy:
